@@ -1,12 +1,13 @@
-name: Release
+name: Release Windows x64
 
 on:
   push:
-    branches: [release]
+    branches: [main, release]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: Cargo.toml)"
+        description: "Version override, e.g. 0.14.1 (empty: Cargo.toml)"
         type: string
         default: ""
 
@@ -14,30 +15,62 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-windows-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    # Intentionally tracked at @main (not SHA-pinned) so org-wide CI improvements, security fixes, and build optimizations propagate without PR churn across all craftapp repos.
-    uses: storytold/craft-common-actions/.github/workflows/release.yml@main
-    with:
-      app-name: filmcraft
-      app-title: FilmCraft
-      craft-fonts-ref: b076417b5880bd4154bd22f00695b1d28c6bea83
-      version: ${{ inputs.version }}
-    secrets:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-      AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
-      AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+  build-windows-x64:
+    name: Build & Package (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install WiX toolset v5
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+
+      - name: Package Windows x64
+        shell: pwsh
+        env:
+          FILMCRAFT_VERSION: ${{ inputs.version }}
+          CARGO_FEATURES: whisper
+        run: |
+          pwsh packaging/windows/package.ps1 -Arch x64
+
+      - name: Upload Windows x64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: filmcraft-windows-x64
+          path: |
+            dist/release/*.msi
+            dist/release/*.zip
+            target/x86_64-pc-windows-msvc/release/filmcraft.exe
+            target/x86_64-pc-windows-msvc/release/filmcraft-cli.exe
+          if-no-files-found: warn
+
+      - name: Create or Update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FilmCraft ${{ github.ref_name }} (Windows x64)
+          draft: false
+          prerelease: false
+          files: |
+            dist/release/*.msi
+            dist/release/*.zip
+            target/x86_64-pc-windows-msvc/release/filmcraft.exe
+            target/x86_64-pc-windows-msvc/release/filmcraft-cli.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

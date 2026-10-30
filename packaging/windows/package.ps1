@@ -62,7 +62,12 @@ if (-not $SkipBuild) {
   [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:FILMCRAFT_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p filmcraft -p filmcraft-cli --target $Target }
+  $extraArgs = @()
+  if ($env:CARGO_FEATURES) {
+    $extraArgs += '--features'
+    $extraArgs += $env:CARGO_FEATURES
+  }
+  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p filmcraft -p filmcraft-cli --target $Target @extraArgs }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
