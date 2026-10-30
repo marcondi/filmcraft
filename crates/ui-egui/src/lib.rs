@@ -128,6 +128,8 @@ pub enum Dialog {
     SequenceSettings,
     /// Set Transition Duration (double-click a transition in the Timeline).
     TransitionDuration,
+    /// Auto-Generate Captions…
+    AutoCaptions,
 }
 
 #[derive(Default)]

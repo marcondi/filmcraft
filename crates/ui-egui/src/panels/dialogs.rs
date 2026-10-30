@@ -83,6 +83,12 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) {
             }
             return;
         }
+        Dialog::AutoCaptions => {
+            if !auto_captions(app, ctx) && app.dialog == Some(d) {
+                app.dialog = None;
+            }
+            return;
+        }
         Dialog::NewSequence | Dialog::Preferences | Dialog::Recovery | Dialog::RevertConfirm => {}
     }
     if !open {
@@ -499,4 +505,158 @@ fn about_tab(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     link(ui, "reportIssue", Icon::Code, tl!("Report an issue"), links::ISSUES, false);
     ui.add_space(10.0);
     ui.label(egui::RichText::new(tl!("MIT OR Apache-2.0. Fonts: Inter, Noto Serif and JetBrains Mono (SIL OFL 1.1).")).small().color(t.text_dim));
+}
+
+/// The Auto-Generate Captions dialog.
+fn auto_captions(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
+    let mut draft = app.ui.auto_captions.clone();
+    let mut keep = true;
+    let mut apply = false;
+    let mut elems: Vec<(String, egui::Rect, String)> = Vec::new();
+    let t = app.tokens;
+
+    egui::Window::new(tl!("Generate Automatic Captions"))
+        .id(egui::Id::unique("Generate Automatic Captions"))
+        .collapsible(false)
+        .resizable(false)
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(crate::widgets::dialog_center(ctx))
+        .show(ctx, |ui| {
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(tl!("Create synchronized subtitle track automatically from dialogue")).size(12.0).color(t.text_dim));
+            ui.add_space(8.0);
+
+            // 1. Style mode
+            ui.label(egui::RichText::new(tl!("Caption Style Mode")).strong().size(12.5));
+            ui.horizontal(|ui| {
+                for (val, label) in [
+                    ("sentence", tl!("Sentence (Standard)")),
+                    ("wordByWord", tl!("Word-by-Word (Viral Pop)")),
+                    ("karaoke", tl!("Karaoke (Highlight)")),
+                ] {
+                    let r = ui.radio(draft.style == val, label);
+                    elems.push((format!("autoCaptions.style.{val}"), r.rect, label.to_string()));
+                    if r.clicked() {
+                        draft.style = val.to_string();
+                    }
+                }
+            });
+            ui.add_space(10.0);
+
+            // 2. Preset Template
+            ui.label(egui::RichText::new(tl!("Visual Preset / Template")).strong().size(12.5));
+            egui::Grid::new("auto-captions-presets").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                for (val, label, desc) in [
+                    ("viral", "Viral Bold (Hormozi)", "High-impact yellow (#FFE600), bold, black outline"),
+                    ("mrbeast", "MrBeast Pop", "Vibrant cyan / emerald (#00F0FF), punchy, heavy outline"),
+                    ("classic", "Classic Subtitle", "Crisp white, dark semi-transparent box"),
+                    ("minimalist", "Minimalist Clean", "Refined white, slim shadow, modern grotesque"),
+                    ("cinematic", "Cinematic Letterbox", "Warm ivory (#F8E7C9), wide spacing, elegant"),
+                ] {
+                    let r = ui.radio(draft.preset == val, label);
+                    elems.push((format!("autoCaptions.preset.{val}"), r.rect, label.to_string()));
+                    if r.clicked() {
+                        draft.preset = val.to_string();
+                    }
+                    ui.label(egui::RichText::new(desc).size(11.0).color(t.text_dim));
+                    ui.end_row();
+                }
+            });
+            ui.add_space(10.0);
+
+            // 3. Color Theme
+            ui.label(egui::RichText::new(tl!("Color Theme")).strong().size(12.5));
+            ui.horizontal(|ui| {
+                let themes = [
+                    (0, "Yellow (#FFE600)", egui::Color32::from_rgb(255, 230, 0)),
+                    (1, "Green (#22E574)", egui::Color32::from_rgb(34, 229, 116)),
+                    (2, "Cyan (#00F0FF)", egui::Color32::from_rgb(0, 240, 255)),
+                    (3, "White (#FFFFFF)", egui::Color32::WHITE),
+                ];
+                for (idx, name, color) in themes {
+                    let active = draft.color_theme == idx;
+                    let resp = ui.radio(active, name);
+                    elems.push((format!("autoCaptions.theme.{idx}"), resp.rect, name.to_string()));
+                    if resp.clicked() {
+                        draft.color_theme = idx;
+                    }
+                    let (cr, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+                    ui.painter().rect_filled(cr, 3.0, color);
+                    ui.add_space(8.0);
+                }
+            });
+            ui.add_space(10.0);
+
+            // 4. Options checkboxes
+            ui.label(egui::RichText::new(tl!("Enhancements")).strong().size(12.5));
+            let r1 = ui.checkbox(&mut draft.auto_emoji, tl!("Smart Auto-Emoji (Adds contextual 🔥, 💰, 💡, 🚀)"));
+            elems.push(("autoCaptions.autoEmoji".into(), r1.rect, "Smart Auto-Emoji".into()));
+            let r2 = ui.checkbox(&mut draft.uppercase, tl!("ALL CAPS (Uppercase text)"));
+            elems.push(("autoCaptions.uppercase".into(), r2.rect, "Uppercase".into()));
+            let r3 = ui.checkbox(&mut draft.remove_fillers, tl!("Remove filler words (um, uh, ah, tipo)"));
+            elems.push(("autoCaptions.removeFillers".into(), r3.rect, "Remove fillers".into()));
+            ui.add_space(10.0);
+
+            // 5. Timing Sync Offset
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(tl!("Sync Offset:")).strong().size(12.0));
+                for (ms, label) in [(-100, "-100 ms"), (0, "0 ms"), (100, "+100 ms"), (200, "+200 ms")] {
+                    let r = ui.radio(draft.sync_offset_ms == ms, label);
+                    elems.push((format!("autoCaptions.sync.{ms}"), r.rect, label.to_string()));
+                    if r.clicked() {
+                        draft.sync_offset_ms = ms;
+                    }
+                }
+            });
+            ui.add_space(12.0);
+
+            // 6. Buttons
+            ui.horizontal(|ui| {
+                let c = ui.button(tl!("Cancel"));
+                elems.push(("autoCaptions.cancel".into(), c.rect, "Cancel".into()));
+                if c.clicked() {
+                    keep = false;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let o = ui.add(egui::Button::new(egui::RichText::new(tl!("Generate Subtitles")).color(egui::Color32::WHITE)).fill(t.accent));
+                    elems.push(("autoCaptions.generate".into(), o.rect, "Generate".into()));
+                    if o.clicked() {
+                        apply = true;
+                    }
+                });
+            });
+        });
+
+    for (id, r, l) in elems {
+        app.auto.add(&id, r, &l);
+    }
+    if crate::widgets::escape_closes(ctx) {
+        keep = false;
+    }
+    if apply {
+        let color_hex = match draft.color_theme {
+            1 => "#22e574ff",
+            2 => "#00f0ffff",
+            3 => "#ffffffff",
+            _ => "#ffe600ff",
+        };
+        let params = serde_json::json!({
+            "style": draft.style,
+            "preset": draft.preset,
+            "uppercase": draft.uppercase,
+            "autoEmoji": draft.auto_emoji,
+            "removeFillers": draft.remove_fillers,
+            "syncOffsetMs": draft.sync_offset_ms,
+            "color": color_hex,
+        });
+        if let Err(e) = app.session.execute("captions.autoGenerate", params) {
+            app.ui.status = e.to_string();
+        } else {
+            app.ui.text_tab = "Captions".to_string();
+            app.ui.status = tl!("Subtitles generated successfully");
+        }
+        keep = false;
+    }
+    app.ui.auto_captions = draft;
+    keep
 }

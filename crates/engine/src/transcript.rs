@@ -401,6 +401,92 @@ fn create_captions(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"track": tid.0, "captions": n}))
 }
 
+pub(crate) fn auto_generate(s: &mut Session, p: &Value) -> Result<Value> {
+    // 1. If sequence transcript words are not present yet, attempt transcription if clips have audio
+    let mut words = sequence_words(s);
+    if words.is_empty() && can_transcribe(s).is_ok() {
+        let _ = generate(s, p);
+        words = sequence_words(s);
+    }
+    if words.is_empty() {
+        return Err(bad(
+            "captions.autoGenerate",
+            "no dialogue found to caption (ensure clips have audio and are transcribed)",
+        ));
+    }
+
+    let style_mode = match str_p(p, "style") {
+        Some(m) => tx::CaptionStyleMode::from_str(m),
+        None => tx::CaptionStyleMode::Sentence,
+    };
+    let preset = match str_p(p, "preset") {
+        Some(pr) => tx::CaptionPreset::from_str(pr),
+        None => tx::CaptionPreset::ViralBold,
+    };
+    let default_uppercase = matches!(preset, tx::CaptionPreset::ViralBold | tx::CaptionPreset::MrBeast);
+    let uppercase = bool_p(p, "uppercase").unwrap_or(default_uppercase);
+    let auto_emoji = bool_p(p, "autoEmoji").unwrap_or(true);
+    let remove_fillers = bool_p(p, "removeFillers").unwrap_or(true);
+    let sync_ms = p.get("syncOffsetMs").and_then(Value::as_i64).unwrap_or(0);
+    let sync_offset = Tick(sync_ms * TICKS_PER_SECOND / 1000);
+    let lines = u64_p(p, "lines")
+        .map(|n| n as usize)
+        .unwrap_or(if style_mode == tx::CaptionStyleMode::WordByWord { 1 } else { 2 });
+    let max_chars = u64_p(p, "maxChars")
+        .map(|n| n as usize)
+        .unwrap_or(if style_mode == tx::CaptionStyleMode::WordByWord { 18 } else { 36 });
+    let anchor = match str_p(p, "anchor") {
+        Some("top") => Some(filmcraft_project::CaptionAnchor::Top),
+        Some("middle") => Some(filmcraft_project::CaptionAnchor::Middle),
+        Some("bottom") => Some(filmcraft_project::CaptionAnchor::Bottom),
+        _ => None,
+    };
+    let color = p.get("color").and_then(crate::captions::parse_color);
+
+    let opts = tx::AutoCaptionOptions {
+        style_mode,
+        preset,
+        uppercase,
+        auto_emoji,
+        remove_fillers,
+        sync_offset,
+        lines,
+        max_chars,
+        anchor,
+        color,
+    };
+
+    let (style, blocks) = tx::generate_auto_captions(&words, &opts, s.sequence_rate());
+    let format = str_p(p, "format").and_then(CaptionFormat::from_name).unwrap_or_default();
+    let name = str_p(p, "name").unwrap_or("Auto Captions").to_string();
+    let n = blocks.len();
+
+    let tid = s.edit_sequence("Auto-Generate Captions", |q, ctx, st| {
+        let tid = TrackId(ctx.alloc());
+        let mut t = CaptionTrack::new(tid, name, format);
+        t.style = style;
+        t.captions = tx::blocks_to_captions(&blocks, ctx);
+        t.check().map_err(edit::EditError::Other)?;
+        q.caption_tracks.insert(0, t);
+        st.caption_selection = q.caption_tracks[0].captions.first().map(|c| vec![c.id]).unwrap_or_default();
+        Ok(tid)
+    })?;
+
+    Ok(json!({
+        "track": tid.0,
+        "captions": n,
+        "style": format!("{style_mode:?}"),
+        "preset": format!("{preset:?}"),
+        "uppercase": uppercase,
+        "autoEmoji": auto_emoji,
+        "syncOffsetMs": sync_ms,
+    }))
+}
+
+pub(crate) fn auto_generate_pub(s: &mut Session, p: &Value) -> Result<Value> {
+    auto_generate(s, p)
+}
+
 fn models(_: &mut Session, _: &Value) -> Result<Value> {
     let dir = models_dir();
     Ok(json!({
@@ -487,6 +573,15 @@ pub fn commands() -> Vec<CommandSpec> {
             r#"{"maxChars":n?,"lines":1|2?,"minSeconds":f?,"maxSeconds":f?,"gapFrames":n?,"format":str?,"name":str?}"#,
             has_transcript,
             create_captions,
+            true,
+        ),
+        spec(
+            "transcript.autoCaptions",
+            "Auto-Generate Captions…",
+            &["Sequence", "Transcript"],
+            r#"{"style":"sentence|wordByWord|karaoke"?,"preset":"viral|mrbeast|classic|minimalist|cinematic"?,"uppercase":bool?,"autoEmoji":bool?,"removeFillers":bool?,"syncOffsetMs":n?,"format":str?,"name":str?}"#,
+            has_seq,
+            auto_generate,
             true,
         ),
     ]

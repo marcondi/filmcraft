@@ -73,7 +73,7 @@ fn one_caption(s: &Session, p: &Value, cmd: &str) -> Result<ClipId> {
     caption_ids(s, p).first().copied().ok_or_else(|| bad(cmd, "no caption (pass `caption` or select one)"))
 }
 
-fn parse_color(v: &Value) -> Option<[u8; 4]> {
+pub(crate) fn parse_color(v: &Value) -> Option<[u8; 4]> {
     if let Some(a) = v.as_array() {
         let c: Vec<u8> = a.iter().filter_map(|x| x.as_u64().map(|n| n.min(255) as u8)).collect();
         return match c.len() {
@@ -597,6 +597,15 @@ pub fn commands() -> Vec<CommandSpec> {
             let format = filmcraft_captions::detect(&bytes, ext.as_deref()).ok_or_else(|| EngineError::Other(format!("{path}: not a caption file")))?;
             import(s, &path, &bytes, format, str_p(p, "name"))
         }),
+        spec(
+            "captions.autoGenerate",
+            "Auto-Generate Captions…",
+            &["Sequence", "Captions"],
+            Some("Cmd+Alt+A"),
+            r#"{"style":"sentence|wordByWord|karaoke"?,"preset":"viral|mrbeast|classic|minimalist|cinematic"?,"uppercase":bool?,"autoEmoji":bool?,"removeFillers":bool?,"syncOffsetMs":n?,"format":str?,"name":str?}"#,
+            has_seq,
+            crate::transcript::auto_generate_pub,
+        ),
         spec(
             "captions.export",
             "Captions…",

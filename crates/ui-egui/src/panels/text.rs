@@ -88,6 +88,7 @@ fn captions(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         ui.painter().text(c - vec2(0.0, 30.0), Align2::CENTER_CENTER, tl!("Add captions"), Tokens::semibold(16.0), t.text);
         ui.painter().text(c - vec2(0.0, 8.0), Align2::CENTER_CENTER, tl!("Create a caption track or import a caption file."), Tokens::ui(12.0), t.text_dim);
         for (i, (id, label, cmd)) in [
+            ("text.captions.autoGenerate", tl!("Auto-generate captions…"), "captions.autoGenerate"),
             ("text.captions.newTrack", tl!("Create new caption track"), "captions.newTrack"),
             ("text.captions.import", tl!("Import captions file…"), "captions.import"),
         ]
@@ -142,7 +143,8 @@ fn captions(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let ph = app.session.playhead();
     let any_sel = !sel.is_empty();
     let under = track.caption_at(ph).filter(|c| c.start < ph).map(|c| c.id);
-    let tools: [(Icon, &str, &str, bool, &str, Value); 5] = [
+    let tools: [(Icon, &str, &str, bool, &str, Value); 6] = [
+        (Icon::Captions, "text.captions.autoGenerate", tl!("Auto-generate captions…"), true, "captions.autoGenerate", json!({})),
         (Icon::Plus, "text.captions.add", tl!("Add caption at playhead"), track.caption_at(ph).is_none(), "captions.add", json!({"track": track.id.0})),
         (
             Icon::Razor,
@@ -584,11 +586,12 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let highlights = app.transcript_cache.highlights(&app.ui.transcript_search);
     let mut x = bar.min.x + sw + 10.0;
     let range = sel.map(|(a, b)| json!({"from": a.min(b), "to": a.max(b)}));
-    let tools: [(Icon, &str, &str, bool, &str, Value); 4] = [
+    let tools: [(Icon, &str, &str, bool, &str, Value); 5] = [
         (Icon::Razor, "text.transcript.extract", tl!("Extract selected text"), sel.is_some(), "transcript.extract", range.clone().unwrap_or_default()),
         (Icon::Trash, "text.transcript.lift", tl!("Lift selected text"), sel.is_some(), "transcript.lift", range.unwrap_or_default()),
         (Icon::Link, "text.transcript.removeFillers", tl!("Remove filler words"), true, "transcript.removeFillers", json!({})),
-        (Icon::Captions, "text.transcript.createCaptions", tl!("Create captions"), true, "transcript.createCaptions", json!({})),
+        (Icon::Captions, "text.transcript.autoCaptions", tl!("Auto-generate captions…"), true, "captions.autoGenerate", json!({})),
+        (Icon::Plus, "text.transcript.createCaptions", tl!("Create captions"), true, "transcript.createCaptions", json!({})),
     ];
     for (icon, id, label, enabled, cmd, params) in tools {
         let r = Rect::from_min_size(pos2(x, bar.min.y), vec2(24.0, 24.0));

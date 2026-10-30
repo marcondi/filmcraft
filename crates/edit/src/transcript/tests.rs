@@ -296,3 +296,107 @@ fn captions_never_overlap_with_dense_words() {
     let b = caption_blocks(&words, &rules, R);
     check_blocks(&b, &rules);
 }
+
+#[test]
+fn smart_emoji_keyword_matching() {
+    assert_eq!(add_smart_emoji("Olha o foguete"), "Olha o foguete 🚀");
+    assert_eq!(add_smart_emoji("Make money fast"), "Make money fast 💰");
+    assert_eq!(add_smart_emoji("Isso e muito fogo"), "Isso e muito fogo 🔥");
+    assert_eq!(add_smart_emoji("No special keyword here"), "No special keyword here");
+}
+
+#[test]
+fn format_caption_text_casing_and_emojis() {
+    assert_eq!(format_caption_text("hello viral world", true, true), "HELLO VIRAL WORLD 🔥");
+    assert_eq!(format_caption_text("hello world", false, false), "hello world");
+    assert_eq!(format_caption_text("grana e sucesso", true, true), "GRANA E SUCESSO 💰 🎯");
+}
+
+#[test]
+fn auto_captions_generation_sentence_mode() {
+    let q = whole();
+    let w = sequence_words(&q, &transcripts());
+    let opts = AutoCaptionOptions {
+        style_mode: CaptionStyleMode::Sentence,
+        preset: CaptionPreset::ViralBold,
+        uppercase: true,
+        auto_emoji: true,
+        remove_fillers: true,
+        sync_offset: Tick::ZERO,
+        lines: 2,
+        max_chars: 36,
+        anchor: Some(CaptionAnchor::Bottom),
+        color: None,
+    };
+    let (style, blocks) = generate_auto_captions(&w, &opts, R);
+    assert_eq!(style.align, CaptionAlign::Center);
+    assert_eq!(style.anchor, CaptionAnchor::Bottom);
+    assert_eq!(style.color, [255, 230, 0, 255]); // Viral Yellow
+    assert!(!blocks.is_empty());
+
+    // Invariants: non-overlapping and positive duration
+    for b in &blocks {
+        assert!(b.end > b.start);
+    }
+    for i in 0..blocks.len().saturating_sub(1) {
+        assert!(blocks[i].end <= blocks[i + 1].start);
+    }
+}
+
+#[test]
+fn auto_captions_generation_word_by_word_mode() {
+    let q = whole();
+    let w = sequence_words(&q, &transcripts());
+    let opts = AutoCaptionOptions {
+        style_mode: CaptionStyleMode::WordByWord,
+        preset: CaptionPreset::MrBeast,
+        uppercase: true,
+        auto_emoji: false,
+        remove_fillers: false,
+        sync_offset: Tick(TICKS_PER_SECOND / 10), // +100ms
+        lines: 1,
+        max_chars: 18,
+        anchor: Some(CaptionAnchor::Bottom),
+        color: None,
+    };
+    let (style, blocks) = generate_auto_captions(&w, &opts, R);
+    assert_eq!(style.color, [0, 240, 255, 255]); // Cyan Pop
+    assert!(blocks.len() > 10);
+
+    // Invariants: non-overlapping and positive duration
+    for b in &blocks {
+        assert!(b.end > b.start);
+    }
+    for i in 0..blocks.len().saturating_sub(1) {
+        assert!(blocks[i].end <= blocks[i + 1].start);
+    }
+}
+
+#[test]
+fn auto_captions_generation_karaoke_mode() {
+    let q = whole();
+    let w = sequence_words(&q, &transcripts());
+    let opts = AutoCaptionOptions {
+        style_mode: CaptionStyleMode::Karaoke,
+        preset: CaptionPreset::Minimalist,
+        uppercase: false,
+        auto_emoji: false,
+        remove_fillers: true,
+        sync_offset: Tick::ZERO,
+        lines: 2,
+        max_chars: 36,
+        anchor: Some(CaptionAnchor::Bottom),
+        color: None,
+    };
+    let (_, blocks) = generate_auto_captions(&w, &opts, R);
+    assert!(!blocks.is_empty());
+    // In karaoke mode, active words are bracketed
+    assert!(blocks.iter().any(|b| b.text.contains('[') && b.text.contains(']')));
+
+    for b in &blocks {
+        assert!(b.end > b.start);
+    }
+    for i in 0..blocks.len().saturating_sub(1) {
+        assert!(blocks[i].end <= blocks[i + 1].start);
+    }
+}

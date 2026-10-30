@@ -525,6 +525,9 @@ pub struct UiState {
     /// Audio Gain dialog draft (mode, dB values).
     #[serde(default)]
     pub audio_gain: AudioGainDraft,
+    /// Auto-Generate Captions dialog draft.
+    #[serde(default)]
+    pub auto_captions: AutoCaptionsDraft,
     /// Add Tracks dialog draft.
     #[serde(default)]
     pub add_tracks: AddTracksDraft,
@@ -818,6 +821,38 @@ pub struct AudioGainDraft {
     pub adjust_db: f64,
     pub max_peak_db: f64,
     pub all_peaks_db: f64,
+}
+
+/// Auto-Generate Captions dialog draft.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AutoCaptionsDraft {
+    /// "sentence", "wordByWord", "karaoke"
+    pub style: String,
+    /// "viral", "mrbeast", "classic", "minimalist", "cinematic"
+    pub preset: String,
+    pub uppercase: bool,
+    pub auto_emoji: bool,
+    pub remove_fillers: bool,
+    /// -100, 0, 100, 200 ms
+    pub sync_offset_ms: i64,
+    pub language: String,
+    pub color_theme: usize,
+}
+
+impl Default for AutoCaptionsDraft {
+    fn default() -> Self {
+        Self {
+            style: "sentence".into(),
+            preset: "viral".into(),
+            uppercase: true,
+            auto_emoji: true,
+            remove_fillers: true,
+            sync_offset_ms: 0,
+            language: "auto".into(),
+            color_theme: 0,
+        }
+    }
 }
 
 /// The Add Tracks dialog (Sequence ▸ Add Tracks…): for video, audio and audio submix tracks, how

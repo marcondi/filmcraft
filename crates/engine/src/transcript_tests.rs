@@ -179,3 +179,66 @@ fn generate_without_a_transcriber() {
     let r = s.execute("transcript.generate", json!({})).unwrap();
     assert!(r["items"].as_array().unwrap().len() >= 2, "{r}");
 }
+
+#[test]
+fn auto_generate_captions_end_to_end() {
+    let (mut s, item, _) = session();
+    // 1. Calling captions.autoGenerate without prior transcript: auto-transcribes and generates captions!
+    let r = s
+        .execute(
+            "captions.autoGenerate",
+            json!({
+                "preset": "viral",
+                "style": "sentence",
+                "uppercase": true,
+                "autoEmoji": true,
+                "removeFillers": true
+            }),
+        )
+        .unwrap();
+    assert!(r["captions"].as_u64().unwrap() > 0);
+    assert_eq!(r["preset"], "\"ViralBold\"");
+
+    let seq = s.active_sequence().unwrap();
+    assert_eq!(seq.caption_tracks.len(), 1);
+    let track = &seq.caption_tracks[0];
+    assert_eq!(track.name, "Auto Captions");
+    assert_eq!(track.style.color, [255, 230, 0, 255]); // Viral yellow
+    assert!(track.check().is_ok(), "CaptionTrack check passes invariant validations");
+
+    // 2. Word-by-word mode with MrBeast preset and sync offset
+    let r2 = s
+        .execute(
+            "transcript.autoCaptions",
+            json!({
+                "preset": "mrbeast",
+                "style": "wordByWord",
+                "syncOffsetMs": 100,
+                "autoEmoji": false
+            }),
+        )
+        .unwrap();
+    assert!(r2["captions"].as_u64().unwrap() >= 5);
+    let seq = s.active_sequence().unwrap();
+    assert_eq!(seq.caption_tracks.len(), 2);
+    let wb_track = &seq.caption_tracks[0];
+    assert_eq!(wb_track.style.color, [0, 240, 255, 255]); // Cyan pop
+    assert!(wb_track.check().is_ok());
+
+    // 3. Karaoke mode
+    let r3 = s
+        .execute(
+            "captions.autoGenerate",
+            json!({
+                "preset": "minimalist",
+                "style": "karaoke",
+                "uppercase": false
+            }),
+        )
+        .unwrap();
+    assert!(r3["captions"].as_u64().unwrap() > 0);
+    let seq = s.active_sequence().unwrap();
+    assert_eq!(seq.caption_tracks.len(), 3);
+    assert!(seq.caption_tracks[0].check().is_ok());
+    assert!(seq.caption_tracks[0].captions.iter().any(|c| c.text.contains('[') && c.text.contains(']')));
+}

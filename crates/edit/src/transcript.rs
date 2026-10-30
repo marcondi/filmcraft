@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use filmcraft_project::{Caption, ClipId, ItemId, Sequence, TrackId, Transcript};
+use filmcraft_project::{Caption, CaptionAlign, CaptionAnchor, CaptionStyle, ClipId, ItemId, Sequence, TrackId, Transcript};
 use filmcraft_time::{FrameRate, TICKS_PER_SECOND, Tick, TimeRange};
 
 use crate::EditCtx;
@@ -421,6 +421,402 @@ pub fn blocks_to_captions(blocks: &[CaptionBlock], ctx: &mut EditCtx) -> Vec<Cap
             settings: String::new(),
         })
         .collect()
+}
+
+/// Style mode for automatic captions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CaptionStyleMode {
+    /// Full sentence or phrase (standard multi-word blocks).
+    #[default]
+    Sentence,
+    /// Fast-paced, dynamic 1-3 word pops (viral short-form style: TikTok / Reels / Shorts).
+    WordByWord,
+    /// Full sentence on screen with the active spoken word highlighted.
+    Karaoke,
+}
+
+impl CaptionStyleMode {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_ascii_lowercase().replace(['-', '_', ' '], "").as_str() {
+            "wordbyword" | "dynamic" | "pop" | "word" => Self::WordByWord,
+            "karaoke" | "highlight" => Self::Karaoke,
+            _ => Self::Sentence,
+        }
+    }
+}
+
+/// Caption visual preset / template.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CaptionPreset {
+    /// Classic clean white text with subtle dark background box.
+    Classic,
+    /// Bold high-impact viral yellow (#FFE600) with dark outline (Hormozi style).
+    #[default]
+    ViralBold,
+    /// High-energy MrBeast style: vibrant cyan (#00F0FF) / emerald (#22E574) with heavy outline.
+    MrBeast,
+    /// Minimalist modern white with thin outline and no background box.
+    Minimalist,
+    /// Cinematic warm tone (#F8E7C9), centered, elegant letter spacing.
+    Cinematic,
+}
+
+impl CaptionPreset {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_ascii_lowercase().replace(['-', '_', ' '], "").as_str() {
+            "classic" | "default" | "subrip" => Self::Classic,
+            "mrbeast" | "beast" | "punchy" => Self::MrBeast,
+            "minimalist" | "minimal" | "clean" => Self::Minimalist,
+            "cinematic" | "cinema" | "film" => Self::Cinematic,
+            _ => Self::ViralBold,
+        }
+    }
+
+    /// Default [`CaptionStyle`] associated with this preset.
+    pub fn to_style(self, custom_color: Option<[u8; 4]>, anchor: Option<CaptionAnchor>) -> CaptionStyle {
+        let anchor = anchor.unwrap_or(CaptionAnchor::Bottom);
+        match self {
+            Self::Classic => CaptionStyle {
+                font: "Inter".into(),
+                size: 52.0,
+                color: custom_color.unwrap_or([255, 255, 255, 255]),
+                background: true,
+                background_color: [0, 0, 0, 190],
+                align: CaptionAlign::Center,
+                anchor,
+                margin: 0.08,
+                line_spacing: 1.2,
+                outline: 0.0,
+                outline_color: [0, 0, 0, 255],
+            },
+            Self::ViralBold => CaptionStyle {
+                font: "Inter".into(),
+                size: 64.0,
+                color: custom_color.unwrap_or([255, 230, 0, 255]),
+                background: false,
+                background_color: [0, 0, 0, 0],
+                align: CaptionAlign::Center,
+                anchor,
+                margin: 0.12,
+                line_spacing: 1.15,
+                outline: 4.5,
+                outline_color: [0, 0, 0, 255],
+            },
+            Self::MrBeast => CaptionStyle {
+                font: "Inter".into(),
+                size: 68.0,
+                color: custom_color.unwrap_or([0, 240, 255, 255]),
+                background: false,
+                background_color: [0, 0, 0, 0],
+                align: CaptionAlign::Center,
+                anchor,
+                margin: 0.14,
+                line_spacing: 1.15,
+                outline: 5.0,
+                outline_color: [0, 0, 0, 255],
+            },
+            Self::Minimalist => CaptionStyle {
+                font: "Inter".into(),
+                size: 46.0,
+                color: custom_color.unwrap_or([255, 255, 255, 255]),
+                background: false,
+                background_color: [0, 0, 0, 0],
+                align: CaptionAlign::Center,
+                anchor,
+                margin: 0.06,
+                line_spacing: 1.25,
+                outline: 2.0,
+                outline_color: [0, 0, 0, 160],
+            },
+            Self::Cinematic => CaptionStyle {
+                font: "Inter".into(),
+                size: 44.0,
+                color: custom_color.unwrap_or([248, 231, 201, 255]),
+                background: false,
+                background_color: [0, 0, 0, 0],
+                align: CaptionAlign::Center,
+                anchor,
+                margin: 0.07,
+                line_spacing: 1.35,
+                outline: 1.5,
+                outline_color: [10, 10, 10, 200],
+            },
+        }
+    }
+}
+
+/// Options for automatic caption / subtitle generation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoCaptionOptions {
+    pub style_mode: CaptionStyleMode,
+    pub preset: CaptionPreset,
+    pub uppercase: bool,
+    pub auto_emoji: bool,
+    pub remove_fillers: bool,
+    /// Timing sync offset in sequence ticks (e.g. +100ms leads or delays caption display).
+    pub sync_offset: Tick,
+    pub lines: usize,
+    pub max_chars: usize,
+    pub anchor: Option<CaptionAnchor>,
+    pub color: Option<[u8; 4]>,
+}
+
+impl Default for AutoCaptionOptions {
+    fn default() -> Self {
+        Self {
+            style_mode: CaptionStyleMode::Sentence,
+            preset: CaptionPreset::ViralBold,
+            uppercase: true,
+            auto_emoji: true,
+            remove_fillers: true,
+            sync_offset: Tick::ZERO,
+            lines: 2,
+            max_chars: 36,
+            anchor: Some(CaptionAnchor::Bottom),
+            color: None,
+        }
+    }
+}
+
+/// Adds contextual smart emojis based on spoken words and keywords (English and Portuguese).
+pub fn add_smart_emoji(text: &str) -> String {
+    let lower = text.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut emojis: Vec<&'static str> = Vec::new();
+    for w in words {
+        let emoji = match w {
+            "dinheiro" | "grana" | "lucro" | "money" | "cash" | "faturar" | "rico" | "rich"
+            | "milhao" | "milhão" | "milhoes" | "milhões" | "vendas" | "pix" | "faturamento"
+            | "dolar" | "dólar" | "ouro" | "investir" | "renda" => Some("💰"),
+            "fogo" | "quente" | "fire" | "viral" | "chama" | "hype" | "bombando" | "explodir"
+            | "explosao" | "explosão" | "top" => Some("🔥"),
+            "ideia" | "idea" | "segredo" | "dica" | "hack" | "insight" | "pensar" | "mentoria"
+            | "aprender" | "segredos" | "truque" | "estrategia" | "estratégia" => Some("💡"),
+            "foguete" | "rocket" | "crescer" | "escala" | "futuro" | "voar" | "topo" | "alturas"
+            | "escalar" | "crescimento" | "avançar" => Some("🚀"),
+            "atencao" | "atenção" | "cuidado" | "pare" | "wait" | "stop" | "alerta" | "perigo"
+            | "urgente" | "erro" | "errado" | "aviso" => Some("⚠️"),
+            "proibido" | "nunca" | "jamais" | "bloqueado" | "cancelado" | "perda" => Some("🚫"),
+            "amor" | "coracao" | "coração" | "love" | "paixao" | "paixão" | "gostar" | "adorar"
+            | "parabens" | "parabéns" => Some("❤️"),
+            "sucesso" | "meta" | "alvo" | "win" | "vitoria" | "vitória" | "ganhar" | "campeao"
+            | "campeão" | "vencer" | "resultado" | "foco" => Some("🎯"),
+            "tempo" | "hora" | "minuto" | "segundo" | "time" | "rapido" | "rápido" | "tarde"
+            | "relogio" | "relógio" | "cronometro" | "agora" | "ja" | "já" => Some("⏰"),
+            "uau" | "wow" | "choque" | "loucura" | "surpresa" | "chocado" | "incrivel"
+            | "incrível" | "inacreditavel" | "inacreditável" | "absurdo" => Some("😱"),
+            "veja" | "olha" | "olhar" | "look" | "ver" | "olhe" | "repara" | "assista" | "repare" => Some("👀"),
+            "alta" | "subir" | "ganho" | "estatistica" | "estatística" | "metrica" | "métrica" => Some("📈"),
+            "forte" | "forca" | "força" | "disciplina" | "treino" | "gym" | "resiliencia" => Some("💪"),
+            "estrela" | "destaque" | "especial" | "premium" | "vip" | "brilho" => Some("⭐"),
+            _ => None,
+        };
+        if let Some(e) = emoji {
+            if !emojis.contains(&e) {
+                emojis.push(e);
+            }
+        }
+    }
+    if emojis.is_empty() {
+        text.to_string()
+    } else {
+        format!("{text} {}", emojis.join(" "))
+    }
+}
+
+/// Formats caption text with casing and optional smart emojis.
+pub fn format_caption_text(raw: &str, uppercase: bool, auto_emoji: bool) -> String {
+    let text = if uppercase {
+        raw.trim().to_uppercase()
+    } else {
+        raw.trim().to_string()
+    };
+    if auto_emoji && !text.is_empty() {
+        add_smart_emoji(&text)
+    } else {
+        text
+    }
+}
+
+/// Generate automated captions from sequence words using modern viral / cinematic presets,
+/// word-by-word dynamic popping, karaoke highlight, filler removal, smart emoji, and sync offset.
+pub fn generate_auto_captions(
+    words: &[SeqWord],
+    opts: &AutoCaptionOptions,
+    rate: FrameRate,
+) -> (CaptionStyle, Vec<CaptionBlock>) {
+    let style = opts.preset.to_style(opts.color, opts.anchor);
+    if words.is_empty() {
+        return (style, Vec::new());
+    }
+
+    // 1. Optionally remove filler words
+    let working_words: Vec<SeqWord> = if opts.remove_fillers {
+        let default_fillers: Vec<String> = DEFAULT_FILLERS.iter().map(|f| f.to_string()).collect();
+        let hits = find_fillers(words, &default_fillers);
+        let mut filtered = Vec::with_capacity(words.len());
+        for (i, w) in words.iter().enumerate() {
+            let is_filler = hits.iter().any(|range| range.contains(&i));
+            if !is_filler {
+                filtered.push(w.clone());
+            }
+        }
+        if filtered.is_empty() {
+            words.to_vec()
+        } else {
+            filtered
+        }
+    } else {
+        words.to_vec()
+    };
+
+    if working_words.is_empty() {
+        return (style, Vec::new());
+    }
+
+    let fd = rate.frame_duration();
+    let min_dur = fd.max(Tick::from_seconds_f64(0.12));
+
+    let mut blocks: Vec<CaptionBlock> = match opts.style_mode {
+        CaptionStyleMode::WordByWord => {
+            // Dynamic single/short word pop style
+            let mut out = Vec::new();
+            for (i, w) in working_words.iter().enumerate() {
+                let text = format_caption_text(&w.text, opts.uppercase, opts.auto_emoji);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                let raw_start = (w.start + opts.sync_offset).max(Tick::ZERO);
+                let raw_end = (w.end + opts.sync_offset).max(raw_start + min_dur);
+                let start = rate.snap(raw_start);
+                let end = rate.snap(raw_end).max(start + fd);
+                out.push(CaptionBlock {
+                    start,
+                    end,
+                    text,
+                    speaker: w.speaker.clone(),
+                    words: i..i + 1,
+                });
+            }
+            out
+        }
+        CaptionStyleMode::Karaoke => {
+            // Group into sentence/pause chunks, then highlight active word
+            let gap = Tick::from_seconds_f64(1.2);
+            let paras = paragraphs(&working_words, gap);
+            let mut out = Vec::new();
+            for p in paras {
+                let full_words: Vec<String> = working_words[p.clone()]
+                    .iter()
+                    .map(|w| w.text.trim().to_string())
+                    .filter(|w| !w.is_empty())
+                    .collect();
+                if full_words.is_empty() {
+                    continue;
+                }
+                for (active_idx, w_idx) in p.clone().enumerate() {
+                    let w = &working_words[w_idx];
+                    let active_word = w.text.trim();
+                    if active_word.is_empty() {
+                        continue;
+                    }
+                    let mut line = String::new();
+                    for (i, word) in full_words.iter().enumerate() {
+                        if i > 0 {
+                            line.push(' ');
+                        }
+                        if i == active_idx {
+                            line.push('[');
+                            let formatted = format_caption_text(word, opts.uppercase, opts.auto_emoji);
+                            line.push_str(&formatted);
+                            line.push(']');
+                        } else {
+                            let formatted = if opts.uppercase {
+                                word.to_uppercase()
+                            } else {
+                                word.clone()
+                            };
+                            line.push_str(&formatted);
+                        }
+                    }
+                    let raw_start = (w.start + opts.sync_offset).max(Tick::ZERO);
+                    let raw_end = (w.end + opts.sync_offset).max(raw_start + min_dur);
+                    let start = rate.snap(raw_start);
+                    let end = rate.snap(raw_end).max(start + fd);
+                    out.push(CaptionBlock {
+                        start,
+                        end,
+                        text: line,
+                        speaker: w.speaker.clone(),
+                        words: w_idx..w_idx + 1,
+                    });
+                }
+            }
+            out
+        }
+        CaptionStyleMode::Sentence => {
+            let rules = CaptionRules {
+                max_chars: opts.max_chars.max(10),
+                lines: opts.lines.clamp(1, 4),
+                min_duration: Tick::from_seconds_f64(1.0),
+                max_duration: Tick::from_seconds_f64(6.0),
+                gap_frames: 0,
+                break_pause: Tick::from_seconds_f64(1.0),
+            };
+            let raw_blocks = caption_blocks(&working_words, &rules, rate);
+            let mut out = Vec::with_capacity(raw_blocks.len());
+            for b in raw_blocks {
+                let text = format_caption_text(&b.text, opts.uppercase, opts.auto_emoji);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                let raw_start = (b.start + opts.sync_offset).max(Tick::ZERO);
+                let raw_end = (b.end + opts.sync_offset).max(raw_start + min_dur);
+                let start = rate.snap(raw_start);
+                let end = rate.snap(raw_end).max(start + fd);
+                out.push(CaptionBlock {
+                    start,
+                    end,
+                    text,
+                    speaker: b.speaker,
+                    words: b.words,
+                });
+            }
+            out
+        }
+    };
+
+    // Strict non-overlapping invariant enforcement
+    blocks.retain(|b| !b.text.trim().is_empty());
+    blocks.sort_by_key(|b| b.start);
+    for i in 0..blocks.len() {
+        if i > 0 {
+            let prev_end = blocks[i - 1].end;
+            if blocks[i].start < prev_end {
+                blocks[i].start = prev_end;
+            }
+        }
+        if blocks[i].end <= blocks[i].start {
+            blocks[i].end = blocks[i].start + fd;
+        }
+    }
+    for i in 0..blocks.len().saturating_sub(1) {
+        let next_start = blocks[i + 1].start;
+        if blocks[i].end > next_start {
+            if next_start > blocks[i].start {
+                blocks[i].end = next_start;
+            } else {
+                blocks[i + 1].start = blocks[i].start + fd;
+                blocks[i + 1].end = blocks[i + 1].end.max(blocks[i + 1].start + fd);
+                blocks[i].end = blocks[i + 1].start;
+            }
+        }
+    }
+
+    (style, blocks)
 }
 
 #[cfg(test)]

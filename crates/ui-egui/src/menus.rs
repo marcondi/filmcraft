@@ -474,6 +474,12 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut params:
             filmcraft_engine::find_command(id).map_or(Ok(()), |c| (c.enabled)(&app.session))?;
             return crate::panels::caption_export::open(app, ctx, &params);
         }
+        // Auto-Generate Captions opens the dialog when invoked with empty params.
+        "captions.autoGenerate" | "transcript.autoCaptions" if params.as_object().is_none_or(|m| m.is_empty()) => {
+            filmcraft_engine::find_command("captions.autoGenerate").map_or(Ok(()), |c| (c.enabled)(&app.session))?;
+            app.dialog = Some(crate::Dialog::AutoCaptions);
+            return Ok(json!({"dialog": "autoCaptions"}));
+        }
         // File ▸ Export ▸ Media… opens the Export mode, like ⌘M (#382); with a path it exports directly.
         "file.exportMedia" if params.get("path").is_none() => {
             filmcraft_engine::find_command(id).map_or(Ok(()), |c| (c.enabled)(&app.session))?;
