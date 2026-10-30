@@ -653,7 +653,7 @@ fn auto_captions(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
             app.ui.status = e.to_string();
         } else {
             app.ui.text_tab = "Captions".to_string();
-            app.ui.status = tl!("Subtitles generated successfully");
+            app.ui.status = tl!("Subtitles generated successfully").into();
         }
         keep = false;
     }
