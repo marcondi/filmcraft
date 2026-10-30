@@ -67,7 +67,7 @@ if (-not $SkipBuild) {
     $extraArgs += '--features'
     $extraArgs += $env:CARGO_FEATURES
   }
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p filmcraft -p filmcraft-cli --target $Target @extraArgs }
+  Invoke-Native "cargo build ($Target)" { cargo build --release -p filmcraft -p filmcraft-cli --target $Target @extraArgs }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
