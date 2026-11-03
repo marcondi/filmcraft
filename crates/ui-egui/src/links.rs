@@ -13,9 +13,9 @@ pub const WEBSITE: &str = "https://getartcraft.com";
 /// FilmCraft's page on the ArtCraft website.
 pub const APP_PAGE: &str = "https://getartcraft.com/apps/filmcraft";
 /// FilmCraft's source repository.
-pub const GITHUB: &str = "https://github.com/storytold/filmcraft";
+pub const GITHUB: &str = "https://github.com/marcondi/filmcraft";
 /// New issue on FilmCraft's repository.
-pub const ISSUES: &str = "https://github.com/storytold/filmcraft/issues";
+pub const ISSUES: &str = "https://github.com/marcondi/filmcraft/issues";
 
 /// (command id, label, url) for every link, in menu order.
 pub const ALL: [(&str, &str, &str); 5] = [
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn urls_follow_the_artcraft_scheme() {
         assert_eq!(APP_PAGE, format!("{WEBSITE}/apps/{APP}"));
-        assert_eq!(GITHUB, format!("https://github.com/storytold/{APP}"));
+        assert_eq!(GITHUB, format!("https://github.com/marcondi/{APP}"));
         assert!(ALL.iter().all(|(id, _, u)| id.starts_with("help.") && u.starts_with("https://")));
         assert_eq!(url_for("help.discord"), Some(DISCORD));
         assert_eq!(url_for("help.nope"), None);
