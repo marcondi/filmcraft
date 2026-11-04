@@ -164,7 +164,7 @@ fn transcriber(s: &Session, p: &Value) -> Result<Arc<dyn Transcriber>> {
     let dir = models_dir().ok_or_else(|| EngineError::Other("no data directory for speech models".into()))?;
     if let Some(m) = filmcraft_speech::models::find(model) {
         if !filmcraft_speech::models::installed(&dir, m) {
-            if let Some(other) = filmcraft_speech::models::CATALOGUE.iter().find(|c| filmcraft_speech::models::installed(&dir, c)) {
+            if let Some(other) = filmcraft_speech::models::catalogue().iter().find(|c| filmcraft_speech::models::installed(&dir, c)) {
                 return filmcraft_speech::load(&dir, other.id).map_err(speech_err);
             }
             #[cfg(feature = "speech-download")]
