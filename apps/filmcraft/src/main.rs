@@ -287,6 +287,7 @@ fn app_creator(launch: Launch, graphics: graphics::GraphicsStart, created: Arc<A
         app.hooks.pick_files = Some(Box::new(|exts: &[&str]| {
             rfd::FileDialog::new()
                 .add_filter(filmcraft_ui_egui::i18n::t("Media"), &file_filters::extensions(exts))
+                .add_filter(filmcraft_ui_egui::i18n::t("All Files"), &["*"])
                 .pick_files()
                 .unwrap_or_default()
                 .into_iter()
@@ -297,6 +298,7 @@ fn app_creator(launch: Launch, graphics: graphics::GraphicsStart, created: Arc<A
         app.hooks.pick_file_for_relink = Some(Box::new(|exts: &[&str], _hint| {
             rfd::FileDialog::new()
                 .add_filter(filmcraft_ui_egui::i18n::t("Media"), &file_filters::extensions(exts))
+                .add_filter(filmcraft_ui_egui::i18n::t("All Files"), &["*"])
                 .pick_file()
                 .map(|p| p.to_string_lossy().to_string())
         }));
@@ -346,6 +348,7 @@ fn app_creator(launch: Launch, graphics: graphics::GraphicsStart, created: Arc<A
         app.hooks.pick_open_file = Some(Box::new(|filter: &str, exts: &[&str]| {
             rfd::FileDialog::new()
                 .add_filter(filmcraft_ui_egui::i18n::t(filter), &file_filters::extensions(exts))
+                .add_filter(filmcraft_ui_egui::i18n::t("All Files"), &["*"])
                 .pick_file()
                 .map(|p| p.to_string_lossy().to_string())
         }));
@@ -495,11 +498,28 @@ fn run_dialog_off_thread(dialog: filmcraft_ui_egui::native_dialogs::FileDialog) 
         let shown = std::panic::catch_unwind(move || {
             let path = |p: std::path::PathBuf| p.to_string_lossy().into_owned();
             match dialog {
-                FileDialog::OpenFiles { exts } => {
-                    rfd::FileDialog::new().add_filter(&media, &exts).pick_files().unwrap_or_default().into_iter().map(path).collect()
-                }
-                FileDialog::OpenFile { filter, exts } => rfd::FileDialog::new().add_filter(&filter, &exts).pick_file().map(path).into_iter().collect(),
-                FileDialog::Relink { exts, .. } => rfd::FileDialog::new().add_filter(&media, &exts).pick_file().map(path).into_iter().collect(),
+                FileDialog::OpenFiles { exts } => rfd::FileDialog::new()
+                    .add_filter(&media, &exts)
+                    .add_filter(filmcraft_ui_egui::i18n::t("All Files"), &["*"])
+                    .pick_files()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(path)
+                    .collect(),
+                FileDialog::OpenFile { filter, exts } => rfd::FileDialog::new()
+                    .add_filter(&filter, &exts)
+                    .add_filter(filmcraft_ui_egui::i18n::t("All Files"), &["*"])
+                    .pick_file()
+                    .map(path)
+                    .into_iter()
+                    .collect(),
+                FileDialog::Relink { exts, .. } => rfd::FileDialog::new()
+                    .add_filter(&media, &exts)
+                    .add_filter(filmcraft_ui_egui::i18n::t("All Files"), &["*"])
+                    .pick_file()
+                    .map(path)
+                    .into_iter()
+                    .collect(),
                 FileDialog::OpenProject => rfd::FileDialog::new().add_filter(&project, &project_exts).pick_file().map(path).into_iter().collect(),
                 FileDialog::SaveProject { name } => {
                     rfd::FileDialog::new().add_filter(&project, &project_exts).set_file_name(name).save_file().map(path).into_iter().collect()

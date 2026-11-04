@@ -25,11 +25,40 @@ impl FilmcraftApp {
                     }
                     let bin = bin.unwrap_or_else(|| json!(app.import_bin().0));
                     let r = app.session.execute("file.import", json!({"paths": paths, "bin": bin})).map_err(|e| e.to_string());
-                    if let Ok(v) = &r
-                        && let Some(errs) = v.get("errors").and_then(Value::as_array)
-                        && !errs.is_empty()
-                    {
-                        app.ui.status = errs.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; ");
+                    match &r {
+                        Ok(v) => {
+                            if let Some(errs) = v.get("errors").and_then(Value::as_array)
+                                && !errs.is_empty()
+                            {
+                                app.ui.status = errs.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; ");
+                            } else if let Some(items) = v.get("items").and_then(Value::as_array) {
+                                let item_ids: Vec<u64> = items.iter().filter_map(Value::as_u64).collect();
+                                if let Some(&first_id) = item_ids.first() {
+                                    let first_name = app
+                                        .session
+                                        .project
+                                        .item(filmcraft_project::ItemId(first_id))
+                                        .map(|it| it.name.clone())
+                                        .unwrap_or_else(|| "clip".to_string());
+                                    let _ = app.session.execute("source.open", json!({"item": first_id}));
+                                    let _ = app.session.execute("project.select", json!({"items": [first_id]}));
+                                    let has_user_seq = app.session.active_sequence().is_some()
+                                        && app.session.state.active_sequence.and_then(|s| app.session.project.item(s)).map(|i| i.name.as_str()) != Some("Main Edit");
+                                    if !has_user_seq {
+                                        let seq_name = std::path::Path::new(&first_name)
+                                            .file_stem()
+                                            .and_then(|s| s.to_str())
+                                            .unwrap_or(&first_name);
+                                        let _ = app.session.execute("file.newSequence", json!({"name": seq_name, "fromItems": item_ids}));
+                                    }
+                                    app.ui.status = tlf!("Imported “{name}”", name = first_name);
+                                    app.ui.mode = crate::state::Mode::Edit;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            app.ui.status = e.clone();
+                        }
                     }
                     r
                 })

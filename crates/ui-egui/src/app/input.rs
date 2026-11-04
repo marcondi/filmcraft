@@ -1,4 +1,4 @@
-use super::{FilmcraftApp, PanelKind, dock_ui, json};
+use super::{FilmcraftApp, PanelKind, Value, dock_ui, json};
 
 impl FilmcraftApp {
     /// Import dropped files, on the main window and on dock panels in their own OS windows.
@@ -40,7 +40,7 @@ impl FilmcraftApp {
             return;
         }
         let imported = self.session.execute("file.import", json!({"paths": paths, "bin": self.import_bin().0}));
-        if let Ok(v) = imported
+        if let Ok(v) = &imported
             && let Some((pos, viewport)) = pointer
             && self.session.prefs.timeline.drop_import_to_timeline
         {
@@ -48,6 +48,41 @@ impl FilmcraftApp {
                 v["items"].as_array().map(|a| a.iter().filter_map(|i| i.as_u64()).map(filmcraft_engine::project::ItemId).collect()).unwrap_or_default();
             if !items.is_empty() {
                 self.pending_timeline_drop = Some((items, pos, viewport));
+            }
+        }
+        match &imported {
+            Ok(v) => {
+                if let Some(errs) = v.get("errors").and_then(Value::as_array)
+                    && !errs.is_empty()
+                {
+                    self.ui.status = errs.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; ");
+                } else if let Some(items) = v.get("items").and_then(Value::as_array) {
+                    let item_ids: Vec<u64> = items.iter().filter_map(Value::as_u64).collect();
+                    if let Some(&first_id) = item_ids.first() {
+                        let first_name = self
+                            .session
+                            .project
+                            .item(filmcraft_project::ItemId(first_id))
+                            .map(|it| it.name.clone())
+                            .unwrap_or_else(|| "clip".to_string());
+                        let _ = self.session.execute("source.open", json!({"item": first_id}));
+                        let _ = self.session.execute("project.select", json!({"items": [first_id]}));
+                        let has_user_seq = self.session.active_sequence().is_some()
+                            && self.session.state.active_sequence.and_then(|s| self.session.project.item(s)).map(|i| i.name.as_str()) != Some("Main Edit");
+                        if !has_user_seq && self.pending_timeline_drop.is_none() {
+                            let seq_name = std::path::Path::new(&first_name)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or(&first_name);
+                            let _ = self.session.execute("file.newSequence", json!({"name": seq_name, "fromItems": item_ids}));
+                        }
+                        self.ui.status = tlf!("Imported “{name}”", name = first_name);
+                        self.ui.mode = crate::state::Mode::Edit;
+                    }
+                }
+            }
+            Err(e) => {
+                self.ui.status = e.to_string();
             }
         }
     }

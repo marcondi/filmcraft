@@ -41,7 +41,9 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         );
         if resp.clicked() {
             let _ = crate::menus::invoke(app, &ctx, cmd, json!({}));
-            app.ui.mode = crate::state::Mode::Edit;
+            if *cmd != "file.import" {
+                app.ui.mode = crate::state::Mode::Edit;
+            }
         }
     }
     let y = recent(app, ui, rect, 90.0 + 150.0 + 36.0);
