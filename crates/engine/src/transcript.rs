@@ -88,6 +88,16 @@ fn ids_p(p: &Value, k: &str) -> Option<Vec<ItemId>> {
 /// active sequence's enabled audio clips. Subclips resolve to their media; duplicates are removed.
 fn targets(s: &Session, p: &Value) -> Vec<ItemId> {
     let mut raw = ids_p(p, "items").or_else(|| u64_p(p, "item").map(|i| vec![ItemId(i)])).unwrap_or_default();
+    if raw.is_empty()
+        && let Some(q) = s.active_sequence()
+        && !s.state.selection.is_empty()
+    {
+        for c in &s.state.selection {
+            if let Some((_, it)) = q.find_item(*c) {
+                raw.push(it.item);
+            }
+        }
+    }
     if raw.is_empty() {
         raw = s.state.project_selection.clone();
     }
@@ -102,6 +112,17 @@ fn targets(s: &Session, p: &Value) -> Vec<ItemId> {
             && !out.contains(&m)
         {
             out.push(m);
+        }
+    }
+    if !out.iter().any(|&item| item_audio(s, item).is_some()) {
+        if let Some(q) = s.active_sequence() {
+            for it in q.audio_tracks.iter().flat_map(|t| t.items.iter()).filter(|it| it.enabled) {
+                if let Some(m) = media_item(s, it.item)
+                    && !out.contains(&m)
+                {
+                    out.push(m);
+                }
+            }
         }
     }
     out
@@ -141,6 +162,17 @@ fn transcriber(s: &Session, p: &Value) -> Result<Arc<dyn Transcriber>> {
         return Err(EngineError::Other(NO_SPEECH.into()));
     }
     let dir = models_dir().ok_or_else(|| EngineError::Other("no data directory for speech models".into()))?;
+    if let Some(m) = filmcraft_speech::models::find(model) {
+        if !filmcraft_speech::models::installed(&dir, m) {
+            if let Some(other) = filmcraft_speech::models::CATALOGUE.iter().find(|c| filmcraft_speech::models::installed(&dir, c)) {
+                return filmcraft_speech::load(&dir, other.id).map_err(speech_err);
+            }
+            #[cfg(feature = "speech-download")]
+            {
+                let _ = filmcraft_speech::models::download(&dir, m, &mut |_, _, _| true);
+            }
+        }
+    }
     filmcraft_speech::load(&dir, model).map_err(speech_err)
 }
 
@@ -405,8 +437,11 @@ pub(crate) fn auto_generate(s: &mut Session, p: &Value) -> Result<Value> {
     // 1. If sequence transcript words are not present yet, attempt transcription if clips have audio
     let mut words = sequence_words(s);
     if words.is_empty() && can_transcribe(s).is_ok() {
-        let _ = generate(s, p);
+        let gen_res = generate(s, p);
         words = sequence_words(s);
+        if words.is_empty() && let Err(e) = gen_res {
+            return Err(bad("captions.autoGenerate", format!("transcription failed: {e}")));
+        }
     }
     if words.is_empty() {
         return Err(bad(
