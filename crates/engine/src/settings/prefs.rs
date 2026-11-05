@@ -285,7 +285,7 @@ impl Default for MediaAnalysisPrefs {
             auto_transcribe_scope: "sequenceClips".into(),
             speaker_labeling: "on".into(),
             language_auto_detect: false,
-            default_language: "en".into(),
+            default_language: "pt".into(),
             whisper_model: filmcraft_speech::models::DEFAULT_MODEL.into(),
         }
     }

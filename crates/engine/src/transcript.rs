@@ -182,14 +182,10 @@ fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("transcript.generate", "nothing to transcribe (pass `items`, select clips, or open a sequence with audio)"));
     }
     let t = transcriber(s, p)?;
-    // Settings ▸ Media Analysis & Transcription: language (or auto-detect) and speaker labelling
+    // Exclusively Brazilian Portuguese (pt)
     let ma = &s.prefs.media_analysis;
-    let default_language = if ma.language_auto_detect { None } else { Some(ma.default_language.clone()) };
     let opts = Options {
-        language: match str_p(p, "language") {
-            Some(l) => Some(l).filter(|l| !l.is_empty() && *l != "auto").map(str::to_string),
-            None => default_language,
-        },
+        language: Some("pt".to_string()),
         diarize: bool_p(p, "diarize").unwrap_or(ma.speaker_labeling != "off"),
         max_speakers: u64_p(p, "maxSpeakers").map(|n| n.clamp(1, 32) as usize).unwrap_or(Options::default().max_speakers),
     };
@@ -434,10 +430,16 @@ fn create_captions(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn auto_generate(s: &mut Session, p: &Value) -> Result<Value> {
-    // 1. If sequence transcript words are not present yet, attempt transcription if clips have audio
+    // 1. If sequence transcript words are not present yet or not in Portuguese, transcribe in Portuguese
+    let tgts = targets(s, p);
+    let needs_pt = tgts.is_empty() || tgts.iter().any(|id| {
+        s.project.transcripts.get(id).is_none_or(|t| t.language != "pt")
+    });
     let mut words = sequence_words(s);
-    if words.is_empty() && can_transcribe(s).is_ok() {
-        let gen_res = generate(s, p);
+    if (words.is_empty() || needs_pt) && can_transcribe(s).is_ok() {
+        let mut actual_p = p.clone();
+        actual_p["language"] = json!("pt");
+        let gen_res = generate(s, &actual_p);
         words = sequence_words(s);
         if words.is_empty() && let Err(e) = gen_res {
             return Err(bad("captions.autoGenerate", format!("transcription failed: {e}")));
@@ -502,6 +504,7 @@ pub(crate) fn auto_generate(s: &mut Session, p: &Value) -> Result<Value> {
         t.style = style;
         t.captions = tx::blocks_to_captions(&blocks, ctx);
         t.check().map_err(edit::EditError::Other)?;
+        q.caption_tracks.retain(|trk| trk.name != name);
         q.caption_tracks.insert(0, t);
         st.caption_selection = q.caption_tracks[0].captions.first().map(|c| vec![c.id]).unwrap_or_default();
         Ok(tid)

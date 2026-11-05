@@ -343,7 +343,7 @@ fn defaults(app: &mut FilmcraftApp, cmd: &str, id: &str) -> Result<(Value, Value
         }
         "sequence.transcribe" => {
             let tracks: Vec<String> = s.active_sequence().map(|q| (1..=q.audio_tracks.len()).map(|i| format!("A{i}")).collect()).unwrap_or_default();
-            (json!({"language": "auto", "track": "mix", "diarize": true}), json!({"tracks": tracks}))
+            (json!({"language": "pt", "track": "mix", "diarize": true}), json!({"tracks": tracks}))
         }
         "file.saveAsTemplate" => (json!({"name": s.project.name}), Value::Null),
         "markers.addFlashCue" => (json!({"name": "", "comment": ""}), Value::Null),
@@ -757,7 +757,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) {
                 );
             }
             "sequence.transcribe" => {
-                let langs = pairs(&["auto", "en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh", "nl", "ru"]);
+                let langs = vec![("pt".to_string(), "Português do Brasil (PT-BR)".to_string())];
                 combo(ui, &mut elems, "transcribe.language", tl!("Language:"), &mut p["language"], &langs);
                 let mut tracks: Vec<(String, String)> = vec![("mix".into(), tl!("Mix").into())];
                 tracks.extend(

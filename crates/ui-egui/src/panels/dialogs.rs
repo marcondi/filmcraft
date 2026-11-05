@@ -524,6 +524,11 @@ fn auto_captions(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
         .show(ctx, |ui| {
             ui.add_space(6.0);
             ui.label(egui::RichText::new(tl!("Create synchronized subtitle track automatically from dialogue")).size(12.0).color(t.text_dim));
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("🇧🇷 Idioma:").strong().size(12.0));
+                ui.label(egui::RichText::new("Português do Brasil (PT-BR)").strong().color(egui::Color32::from_rgb(34, 229, 116)).size(12.0));
+            });
             ui.add_space(8.0);
 
             // 1. Style mode
@@ -648,6 +653,7 @@ fn auto_captions(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
             "removeFillers": draft.remove_fillers,
             "syncOffsetMs": draft.sync_offset_ms,
             "color": color_hex,
+            "language": "pt",
         });
         if let Err(e) = app.session.execute("captions.autoGenerate", params) {
             app.ui.status = e.to_string();
