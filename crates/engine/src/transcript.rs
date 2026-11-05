@@ -500,11 +500,13 @@ pub(crate) fn auto_generate(s: &mut Session, p: &Value) -> Result<Value> {
 
     let tid = s.edit_sequence("Auto-Generate Captions", |q, ctx, st| {
         let tid = TrackId(ctx.alloc());
+        let track_name = name.clone();
         let mut t = CaptionTrack::new(tid, name, format);
+        t.language = "pt".into();
         t.style = style;
         t.captions = tx::blocks_to_captions(&blocks, ctx);
         t.check().map_err(edit::EditError::Other)?;
-        q.caption_tracks.retain(|trk| trk.name != name);
+        q.caption_tracks.retain(|trk| trk.name != track_name);
         q.caption_tracks.insert(0, t);
         st.caption_selection = q.caption_tracks[0].captions.first().map(|c| vec![c.id]).unwrap_or_default();
         Ok(tid)

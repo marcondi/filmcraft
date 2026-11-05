@@ -180,7 +180,7 @@ impl CaptionTrack {
             id,
             name,
             format,
-            language: "en".into(),
+            language: "pt".into(),
             style: CaptionStyle::default(),
             enabled: true,
             locked: false,
